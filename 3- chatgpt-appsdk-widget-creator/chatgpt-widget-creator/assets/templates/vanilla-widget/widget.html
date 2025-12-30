@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatGPT Widget</title>
+  <style>
+    /* Theme Variables */
+    :root {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f1f5f9;
+      --bg-tertiary: #e2e8f0;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-tertiary: #64748b;
+      --accent: #0891b2;
+      --accent-light: #e0f2fe;
+      --border: #cbd5e1;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+
+    [data-theme="dark"] {
+      --bg-primary: #0b1120;
+      --bg-secondary: #0f172a;
+      --bg-tertiary: #1e293b;
+      --text-primary: #f8fafc;
+      --text-secondary: #e2e8f0;
+      --text-tertiary: #94a3b8;
+      --accent: #06b6d4;
+      --accent-light: rgba(6, 182, 212, 0.15);
+      --border: #334155;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --error: #f87171;
+    }
+
+    /* Base Styles */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      padding: 16px;
+    }
+
+    /* Container */
+    .widget-container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    /* Card */
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .card-title {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .card-text {
+      font-size: 0.9375rem;
+      color: var(--text-secondary);
+    }
+
+    /* Button */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 20px;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      filter: brightness(1.1);
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    /* Loading State */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 200px;
+      color: var(--text-tertiary);
+    }
+
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Error State */
+    .error {
+      padding: 16px;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--error);
+      border-radius: 8px;
+      color: var(--error);
+    }
+
+    /* Empty State */
+    .empty {
+      text-align: center;
+      padding: 32px;
+      color: var(--text-tertiary);
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="widget-container">
+    <div class="loading">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <script>
+    // ====================================
+    // ChatGPT Widget Template
+    // ====================================
+
+    // Theme handling
+    function applyTheme() {
+      const theme = window.openai?.theme ?? 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+
+    // Get data from MCP tool output
+    function getData() {
+      return window.openai?.toolOutput;
+    }
+
+    // Get private metadata
+    function getMeta() {
+      return window.openai?.toolResponseMetadata;
+    }
+
+    // Save widget state (persists across turns)
+    function saveState(state) {
+      window.openai?.setWidgetState(state);
+    }
+
+    // Get saved state
+    function getState() {
+      return window.openai?.widgetState ?? {};
+    }
+
+    // Call another MCP tool
+    async function callTool(name, args) {
+      try {
+        const result = await window.openai?.callTool(name, args);
+        return result?.structuredContent;
+      } catch (error) {
+        console.error('Tool call failed:', error);
+        return null;
+      }
+    }
+
+    // Send follow-up message
+    async function sendMessage(prompt) {
+      await window.openai?.sendFollowUpMessage({ prompt });
+    }
+
+    // ====================================
+    // Widget Rendering
+    // ====================================
+
+    function render() {
+      const app = document.getElementById('app');
+      const data = getData();
+
+      // Apply theme
+      applyTheme();
+
+      // Loading state
+      if (!data) {
+        app.innerHTML = `
+          <div class="loading">
+            <div class="spinner"></div>
+          </div>
+        `;
+        return;
+      }
+
+      // Error state
+      if (data.isError) {
+        app.innerHTML = `
+          <div class="error">
+            ${data.message || 'An error occurred'}
+          </div>
+        `;
+        return;
+      }
+
+      // Empty state
+      if (!data.items || data.items.length === 0) {
+        app.innerHTML = `
+          <div class="empty">
+            <p>No data available</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Main content - customize this for your widget
+      app.innerHTML = `
+        <div class="card">
+          <h2 class="card-title">Widget Title</h2>
+          <p class="card-text">Data loaded successfully!</p>
+        </div>
+
+        ${data.items.map((item, index) => `
+          <div class="card">
+            <h3 class="card-title">${item.title || `Item ${index + 1}`}</h3>
+            <p class="card-text">${item.description || 'No description'}</p>
+          </div>
+        `).join('')}
+
+        <div style="display: flex; gap: 12px; margin-top: 16px;">
+          <button class="btn btn-primary" onclick="handleAction()">
+            Action
+          </button>
+          <button class="btn btn-secondary" onclick="handleSecondary()">
+            Secondary
+          </button>
+        </div>
+      `;
+    }
+
+    // ====================================
+    // Event Handlers
+    // ====================================
+
+    async function handleAction() {
+      // Example: Call a tool and refresh
+      const result = await callTool('your_tool_name', { param: 'value' });
+      if (result) {
+        render();
+      }
+    }
+
+    function handleSecondary() {
+      // Example: Save state and send message
+      saveState({ lastAction: 'secondary', timestamp: Date.now() });
+      sendMessage('Show me more details');
+    }
+
+    // ====================================
+    // Initialization
+    // ====================================
+
+    function init() {
+      // Initial render
+      render();
+
+      // Listen for data updates
+      window.addEventListener('openai:set_globals', render);
+
+      // Listen for theme changes
+      window.addEventListener('openai:themeChanged', applyTheme);
+    }
+
+    // Mock data for local development
+    if (!window.openai) {
+      window.openai = {
+        toolOutput: {
+          items: [
+            { title: 'Item 1', description: 'Description for item 1' },
+            { title: 'Item 2', description: 'Description for item 2' },
+            { title: 'Item 3', description: 'Description for item 3' },
+          ]
+        },
+        theme: 'light',
+        setWidgetState: (s) => console.log('setWidgetState:', s),
+        callTool: async (n, a) => {
+          console.log('callTool:', n, a);
+          return { structuredContent: { success: true } };
+        },
+        sendFollowUpMessage: async (o) => console.log('sendFollowUpMessage:', o),
+      };
+    }
+
+    // Start
+    init();
+  </script>
+</body>
+</html>
